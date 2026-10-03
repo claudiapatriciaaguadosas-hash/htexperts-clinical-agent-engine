@@ -6,6 +6,13 @@ Owner: HTExperts / Dra. Claudia Aguado.
 Target product: RENALIA CKM.
 API base path: `/api/agent-engine/v1`.
 
+Implementation note: Lovable later reported an implemented contract under
+`/api/public/agent-engine/v1` with `identity_proof`, voice blocked for missing
+voice/recording consent, and handoff status without acknowledgement tracking.
+Keep this document as the original proposal only; use
+`lovable-contract-clarification-request.md` plus the implemented contract report
+to reconcile final schemas before external testing.
+
 This specification is the single API contract to hand to Lovable for RENALIA CKM. It defines the HTTPS API that RENALIA should expose to the external HTExperts Clinical Agent Engine. These routes are proposals until Lovable implements and verifies them against the real RENALIA codebase. Do not treat them as existing endpoints.
 
 The external engine must not connect directly to RENALIA's database, must not duplicate the clinical record, and must not use a Supabase service-role key as an isolation boundary. RENALIA remains the source of truth for patients, appointments, validated clinical data, CKM/PREVENT/KFRE, consent, human review, and audit.
