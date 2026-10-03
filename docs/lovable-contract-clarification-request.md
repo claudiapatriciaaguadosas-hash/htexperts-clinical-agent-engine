@@ -1,120 +1,101 @@
-# Solicitud unica a Lovable: lagunas para cerrar integracion RENALIA
+# Solicitud unica a Lovable: preparar prueba externa RENALIA
 
 Fecha: 2026-10-03.
-Repositorio: `htexperts-clinical-agent-engine`.
-Contexto: el motor externo ya tiene un conector local para `/api/public/agent-engine/v1`, firma HMAC y pruebas con transporte simulado. No se han hecho llamadas reales ni envio de mensajes.
+Repositorio HTExperts: `htexperts-clinical-agent-engine`.
+Estado local: el conector HTExperts ya implementa `/api/public/agent-engine/v1`, firma HMAC, `identity_proof`, reintentos limitados, `Retry-After`, 404 normales y distincion de 409 recuperable vs definitivo con pruebas simuladas. No se han hecho llamadas reales ni envios reales.
 
-Lovable reporto un contrato implementado y probado con datos ficticios, pero el documento no incluye los cuerpos completos de peticion/respuesta de las 12 rutas ni el procedimiento exacto de alta de credenciales. Para completar la integracion sin inventar contratos, necesitamos una respuesta unica con los puntos siguientes.
+El contrato implementado recibido el 2026-10-03 cierra los esquemas de las 12 rutas y el procedimiento tecnico de alta. Para ejecutar la comprobacion desde dominio publicado falta preparar un entorno demo activo y entregar secretos por un canal seguro fuera del chat y fuera del repositorio.
 
-## 1. OpenAPI o contrato completo por ruta
+## 1. Preparar instalacion demo activa
 
-Entregar para cada ruta implementada:
+Crear o reactivar una instalacion de prueba con estas condiciones:
 
-- metodo y ruta exacta bajo `/api/public/agent-engine/v1`;
-- JSON Schema completo de request;
-- JSON Schema completo de response exitosa;
-- JSON Schema completo de error;
-- campos obligatorios, opcionales, enums y restricciones;
-- ejemplo ficticio valido;
-- ejemplo ficticio de error relevante;
-- permisos requeridos;
-- si requiere `X-HTE-Idempotency-Key`;
-- si valida `identity_proof`;
-- si puede devolver `retryable: true`.
+- `is_demo=true`.
+- `active=true`.
+- `installation_key` sugerida: `inst_hte_prueba`.
+- `whatsapp_route_mode="external_engine"` solo si no dispara envios reales; si hay riesgo, usar el modo mas seguro e informar la limitacion.
+- Permisos necesarios para probar las 12 rutas:
+  - `identity:resolve`
+  - `appointments:read`
+  - `appointments:write`
+  - `appointments:request_reschedule`
+  - `pending:read`
+  - `pending:report`
+  - `measurements:report`
+  - `education:read`
+  - `handoff:create`
+  - `handoff:read`
+  - `conversation:event_write`
+  - `outreach:event_write`
 
-Rutas esperadas segun el contrato implementado:
+Confirmar que la instalacion demo no envia WhatsApp, voz ni outreach reales.
 
-- `identity/resolve-contact`
-- `tools/appointments/next`
-- `tools/appointments/confirm`
-- `tools/appointments/reschedule-requests`
-- `tools/pending-tasks/list`
-- `tools/pending-tasks/report`
-- `tools/measurements/reported`
-- `tools/education/material`
-- `tools/handoffs`
-- `tools/handoffs/status`
-- `events/conversation`
-- `events/outreach-result`
+## 2. Crear credencial vigente
 
-## 2. Alta de instalaciones y credenciales
+Crear una credencial demo:
 
-Documentar el procedimiento exacto, sin valores secretos:
+- `credential_id` sugerido: `cred_hte_prueba_v1`.
+- `status="active"`.
+- `key_version=1`.
+- secreto aleatorio de al menos 32 bytes en la boveda cifrada.
+- registrar `vault_secret_name` internamente.
 
-- quien puede crear `agent_engine_installations`;
-- campos requeridos para crear una instalacion demo y una instalacion piloto;
-- quien puede crear `agent_engine_credentials`;
-- formato de `installation_key`;
-- formato de `credential_id`;
-- como se genera el secreto;
-- como se entrega el secreto a HTExperts por canal seguro;
-- donde queda el `vault_secret_name`;
-- como revocar una credencial;
-- como rotar credenciales y durante cuanto tiempo conviven versiones;
-- como activar/desactivar una instalacion;
-- como configurar `whatsapp_route_mode`.
+Entregar a HTExperts, sin valores secretos en chat ni GitHub:
 
-## 3. Datos de prueba para dominio publicado
+- `RENALIA_API_BASE_URL`.
+- `RENALIA_INSTALLATION_ID`.
+- `RENALIA_CREDENTIAL_ID`.
+- mecanismo seguro para recibir `RENALIA_SIGNING_SECRET`, por ejemplo gestor de secretos compartido, cofre seguro o entrega directa fuera del chat.
 
-Para ejecutar una prueba externa sin pacientes reales, entregar:
+## 3. Crear datos ficticios autorizados
 
-- `RENALIA_API_BASE_URL` del dominio publicado o entorno de prueba;
-- `RENALIA_INSTALLATION_ID` de una clinica ficticia;
-- `RENALIA_CREDENTIAL_ID` de prueba;
-- mecanismo seguro para recibir `RENALIA_SIGNING_SECRET` fuera del chat y fuera de GitHub;
-- telefono ficticio, ultimos digitos de documento y fecha de nacimiento ficticia para `identity/resolve-contact`;
-- `patient_ref` e `identity_proof` validos o instrucciones para generarlos mediante `resolve-contact`;
-- referencias ficticias disponibles: cita, tarea visible, material educativo, outreach;
-- modo de WhatsApp configurado para la instalacion de prueba;
-- confirmacion de que la instalacion es demo y no envia mensajes reales.
+Crear datos demo para una clinica ficticia:
 
-## 4. Respuestas transitorias y recuperacion
+- paciente activo ficticio;
+- telefono E.164 ficticio;
+- ultimos 4-6 digitos de documento ficticio;
+- fecha de nacimiento ficticia;
+- consentimientos concedidos:
+  - `data_processing`;
+  - `whatsapp_messaging`;
+  - `telemonitoring`;
+- una cita futura `scheduled`;
+- una tarea visible para paciente `patient_visible=true`, `status=open`;
+- una plantilla activa de categoria `educacion`;
+- si se prueba `events/outreach-result`, un `outreach_id` demo valido.
 
-Confirmar como forzar o simular:
+No entregar `patient_ref` ni `identity_proof` manualmente salvo que sea imprescindible; el flujo normal debe generarlos con `identity/resolve-contact`.
 
-- `503 temporarily_unavailable` para validar reintento;
-- `429 rate_limited` y cabecera `Retry-After`;
-- `409 state_conflict` durante idempotencia concurrente;
-- `409 idempotency_conflict` con misma clave y cuerpo distinto.
+## 4. Preparar casos negativos seguros
 
-El conector HTExperts reintenta solo errores marcados como recuperables y, en cada reintento, genera un nuevo `X-HTE-Request-Id` y firma nueva, conservando el cuerpo y la clave de idempotencia originales.
+Para validar sin pacientes reales, confirmar como probar:
 
-## 5. Consentimiento y handoffs
+- `tools/appointments/next` sin cita futura: HTTP 404 con `status:"not_found"` y `appointment:null`.
+- `tools/education/material` sin plantilla aprobada: HTTP 404 con `status:"not_found"` y `material:null`.
+- `409 state_conflict` recuperable por peticion idempotente en curso.
+- `409 idempotency_conflict` definitivo por misma clave con cuerpo distinto.
+- `429 rate_limited` con `Retry-After`, idealmente bajando temporalmente `HTE_AGENT_ENGINE_RATE_LIMIT_PER_MINUTE` para no hacer 120 llamadas por minuto.
+- `503 temporarily_unavailable`; si no hay interruptor real, confirmar que solo se validara con transporte simulado del conector HTExperts.
 
-Confirmar:
+## 5. Mantener bloqueos clinicos
 
-- que `retell_voice` debe seguir devolviendo `403 consent_revoked` hasta definir consentimiento de voz y grabacion;
-- si existe una fecha prevista para modelar consentimiento de voz;
-- que `tools/handoffs/status` devuelve `acknowledgement_tracked: false`;
-- que no existe acuse de recibo humano todavia;
-- cual sera el equipo/responsable que recibira handoffs cuando se implemente acuse.
+Confirmar durante la prueba:
 
-## 6. Auditoria y redaccion
+- `retell_voice` sigue bloqueado con `403 consent_revoked`.
+- No hay consentimiento de voz/grabacion definido todavia.
+- `tools/handoffs/status` devuelve `acknowledgement_tracked:false`.
+- No existe acuse humano registrado todavia.
+- Escalamiento sin identidad verificada sigue pendiente de decision funcional; no activar flujo paciente real para contactos desconocidos.
 
-Confirmar que RENALIA no guarda:
+## 6. Evidencia esperada de Lovable
 
-- secretos HMAC;
-- `identity_proof` en claro;
-- ultimos digitos de documento;
-- fecha de nacimiento usada para verificacion;
-- transcripciones completas salvo politica explicita.
+Al terminar la preparacion, devolver:
 
-Confirmar tambien la ubicacion donde Lovable puede revisar auditoria de:
-
-- firma invalida;
-- credencial revocada;
-- permiso ausente;
-- consentimiento revocado;
-- idempotencia deduplicada;
-- medicion pendiente;
-- handoff urgente.
-
-## 7. Evidencia solicitada
-
-Adjuntar o resumir:
-
-- resultado de las 48 pruebas reportadas;
-- build/tipos de RENALIA;
-- confirmacion de que las credenciales demo reportadas como revocadas ya no funcionan;
-- confirmacion de que no quedan super-admins temporales ni datos ficticios no autorizados;
-- cualquier incompatibilidad respecto al contrato implementado enviado el 2026-10-03.
+- dominio exacto a usar;
+- instalacion y credencial creadas, sin secreto;
+- confirmacion de que el secreto se entrego por canal seguro;
+- datos ficticios necesarios para `resolve-contact`;
+- lista de rutas habilitadas;
+- confirmacion de que no habra mensajes/llamadas reales;
+- confirmacion de donde revisar auditoria;
+- cualquier cambio respecto al contrato implementado del 2026-10-03.

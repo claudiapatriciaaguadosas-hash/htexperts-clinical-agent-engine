@@ -135,6 +135,7 @@ class RenaliaApiClient:
         *,
         transport: RenaliaTransport = default_urllib_transport,
         clock: Callable[[], float] = time.time,
+        sleeper: Callable[[float], None] = time.sleep,
         request_id_factory: Callable[[], str] | None = None,
     ) -> None:
         if config.max_attempts < 1:
@@ -142,6 +143,7 @@ class RenaliaApiClient:
         self.config = config
         self.transport = transport
         self.clock = clock
+        self.sleeper = sleeper
         self.request_id_factory = request_id_factory or (lambda: str(uuid.uuid4()))
 
     def post(
@@ -170,11 +172,16 @@ class RenaliaApiClient:
 
             if 200 <= response.status_code < 300:
                 return parsed
+            if response.status_code == 404 and parsed.get("status") == "not_found":
+                return parsed
 
             error = self._client_error_from_response(response, parsed)
             if not self._should_retry(error, attempt, attempts):
                 raise error
             last_error = error
+            delay = self._retry_delay_seconds(response)
+            if delay > 0:
+                self.sleeper(delay)
 
         if last_error is not None:
             raise last_error
@@ -239,6 +246,24 @@ class RenaliaApiClient:
             },
             idempotency_key=idempotency_key,
         )
+
+    def education_material(
+        self,
+        *,
+        session: Mapping[str, Any],
+        patient_identity: Mapping[str, Any],
+        topic: str | None = None,
+        language: str | None = None,
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "session": dict(session),
+            "patient_identity": dict(patient_identity),
+        }
+        if topic is not None:
+            payload["topic"] = topic
+        if language is not None:
+            payload["language"] = language
+        return self.post("tools/education/material", payload)
 
     def handoff_status(
         self,
@@ -345,4 +370,23 @@ class RenaliaApiClient:
     def _should_retry(self, error: RenaliaClientError, attempt: int, max_attempts: int) -> bool:
         if attempt >= max_attempts:
             return False
-        return error.retryable and error.http_status in RETRYABLE_HTTP_STATUSES | {409}
+        if not error.retryable:
+            return False
+        if error.http_status in RETRYABLE_HTTP_STATUSES:
+            return True
+        return error.http_status == 409 and error.code == "state_conflict"
+
+    def _retry_delay_seconds(self, response: RenaliaHttpResponse) -> float:
+        if response.status_code != 429 or not response.headers:
+            return 0.0
+        retry_after = None
+        for key, value in response.headers.items():
+            if key.lower() == "retry-after":
+                retry_after = value
+                break
+        if retry_after is None:
+            return 0.0
+        try:
+            return max(0.0, float(retry_after))
+        except ValueError:
+            return 0.0

@@ -2,6 +2,10 @@
 
 Este plan prepara la prueba del conector HTExperts contra RENALIA publicada. No debe ejecutarse contra pacientes reales ni enviar mensajes reales.
 
+## Estado actual
+
+No hay instalacion demo activa ni credencial vigente. Las credenciales demo reportadas por Lovable estan revocadas y las instalaciones demo inactivas. Este plan queda listo para ejecutar solo cuando Lovable cree una nueva instalacion demo y entregue el secreto por un canal seguro fuera del chat y fuera de GitHub.
+
 ## Prerrequisitos
 
 - `RENALIA_API_BASE_URL` del dominio publicado o entorno de prueba.
@@ -23,7 +27,11 @@ Este plan prepara la prueba del conector HTExperts contra RENALIA publicada. No 
 8. Voz `retell_voice`: debe permanecer bloqueada con `403 consent_revoked`.
 9. Handoff status: debe mostrar `acknowledgement_tracked: false`.
 10. Limite de peticiones: probar en entorno demo con autorizacion, idealmente bajando temporalmente el limite o usando una ruta de prueba para evitar 120 llamadas reales por minuto.
-11. Recuperacion ante fallos temporales: solicitar a Lovable una forma de simular `503`; validar que el conector reintenta con nuevo request id y firma, conservando cuerpo e idempotencia.
+11. Recuperacion ante fallos temporales: solicitar a Lovable una forma de simular `503`; si no existe interruptor, mantener esta validacion en pruebas locales con transporte simulado.
+12. `409 state_conflict` recuperable: validar peticion en curso con la misma clave de idempotencia.
+13. `409 idempotency_conflict` definitivo: validar misma clave con cuerpo distinto y sin reintento.
+14. `tools/appointments/next` sin cita y `tools/education/material` sin material: deben tratarse como 404 normales con `status:not_found`.
+15. Escalamiento sin identidad verificada: no divulgar datos clinicos ni crear paciente; dejar pendiente el criterio funcional final de escalamiento administrativo.
 
 ## Criterios de no avance
 

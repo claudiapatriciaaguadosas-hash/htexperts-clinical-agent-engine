@@ -53,6 +53,10 @@ def response(status_code: int, payload: dict[str, Any]) -> RenaliaHttpResponse:
     return RenaliaHttpResponse(status_code, json.dumps(payload).encode("utf-8"), {})
 
 
+def response_with_headers(status_code: int, payload: dict[str, Any], headers: dict[str, str]) -> RenaliaHttpResponse:
+    return RenaliaHttpResponse(status_code, json.dumps(payload).encode("utf-8"), headers)
+
+
 def config(max_attempts: int = 3) -> RenaliaClientConfig:
     return RenaliaClientConfig(
         api_base_url="https://renalia.example.test",
@@ -149,6 +153,7 @@ class RenaliaClientTests(unittest.TestCase):
             config(max_attempts=2),
             transport=transport,
             clock=lambda: 1791065400,
+            sleeper=lambda seconds: None,
             request_id_factory=lambda: next(ids),
         )
 
@@ -168,6 +173,180 @@ class RenaliaClientTests(unittest.TestCase):
         self.assertEqual(first["headers"]["X-HTE-Request-Id"], "request-1")
         self.assertEqual(second["headers"]["X-HTE-Request-Id"], "request-2")
         self.assertNotEqual(first["headers"]["Authorization"], second["headers"]["Authorization"])
+
+    def test_rate_limit_retry_respects_retry_after(self) -> None:
+        slept: list[float] = []
+        transport = FakeTransport(
+            [
+                response_with_headers(
+                    429,
+                    {
+                        "error": {
+                            "code": "rate_limited",
+                            "message": "too many requests",
+                            "retryable": True,
+                            "correlation_id": "corr_demo",
+                        }
+                    },
+                    {"Retry-After": "2"},
+                ),
+                response(
+                    200,
+                    {
+                        "status": "ok",
+                        "data": {"appointment": {"appointment_ref": "apptref_demo"}},
+                        "review_required": False,
+                        "audit_ref": "audit_demo",
+                    },
+                ),
+            ]
+        )
+        ids = iter(["request-1", "request-2"])
+        client = RenaliaApiClient(
+            config(max_attempts=2),
+            transport=transport,
+            clock=lambda: 1791065400,
+            sleeper=lambda seconds: slept.append(seconds),
+            request_id_factory=lambda: next(ids),
+        )
+
+        result = client.next_appointment(session=session(), patient_identity=patient_identity())
+
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(slept, [2.0])
+        self.assertEqual(transport.calls[0]["body"], transport.calls[1]["body"])
+
+    def test_in_progress_state_conflict_is_retryable(self) -> None:
+        transport = FakeTransport(
+            [
+                response(
+                    409,
+                    {
+                        "error": {
+                            "code": "state_conflict",
+                            "message": "idempotent request is still in progress",
+                            "retryable": True,
+                            "correlation_id": "corr_demo",
+                        }
+                    },
+                ),
+                response(
+                    200,
+                    {
+                        "status": "ok",
+                        "data": {"appointment_ref": "apptref_demo", "status": "confirmed"},
+                        "review_required": False,
+                        "audit_ref": "audit_demo",
+                        "idempotency": {"key": "idem_confirm_demo", "deduped": True},
+                    },
+                ),
+            ]
+        )
+        ids = iter(["request-1", "request-2"])
+        client = RenaliaApiClient(
+            config(max_attempts=2),
+            transport=transport,
+            clock=lambda: 1791065400,
+            sleeper=lambda seconds: None,
+            request_id_factory=lambda: next(ids),
+        )
+
+        result = client.confirm_appointment(
+            session=session(),
+            patient_identity=patient_identity(),
+            appointment_ref="apptref_demo",
+            confirmation_text="Confirmo",
+            idempotency_key="idem_confirm_demo",
+        )
+
+        self.assertEqual(result["data"]["status"], "confirmed")
+        self.assertEqual(len(transport.calls), 2)
+        self.assertEqual(transport.calls[0]["body"], transport.calls[1]["body"])
+        self.assertEqual(transport.calls[0]["headers"]["X-HTE-Idempotency-Key"], "idem_confirm_demo")
+        self.assertEqual(transport.calls[1]["headers"]["X-HTE-Idempotency-Key"], "idem_confirm_demo")
+
+    def test_idempotency_conflict_is_definitive(self) -> None:
+        transport = FakeTransport(
+            [
+                response(
+                    409,
+                    {
+                        "error": {
+                            "code": "idempotency_conflict",
+                            "message": "same key used with different body",
+                            "retryable": False,
+                            "correlation_id": "corr_demo",
+                        }
+                    },
+                )
+            ]
+        )
+        client = RenaliaApiClient(
+            config(max_attempts=3),
+            transport=transport,
+            clock=lambda: 1791065400,
+            request_id_factory=lambda: "request-1",
+        )
+
+        with self.assertRaises(RenaliaClientError) as raised:
+            client.confirm_appointment(
+                session=session(),
+                patient_identity=patient_identity(),
+                appointment_ref="apptref_demo",
+                confirmation_text="Confirmo",
+                idempotency_key="idem_conflict_demo",
+            )
+
+        self.assertEqual(raised.exception.code, "idempotency_conflict")
+        self.assertFalse(raised.exception.retryable)
+        self.assertEqual(len(transport.calls), 1)
+
+    def test_not_found_appointment_is_normal_result(self) -> None:
+        transport = FakeTransport(
+            [
+                response(
+                    404,
+                    {
+                        "status": "not_found",
+                        "data": {"appointment": None},
+                        "review_required": False,
+                        "audit_ref": "audit_demo",
+                    },
+                )
+            ]
+        )
+        client = RenaliaApiClient(config(), transport=transport, clock=lambda: 1791065400)
+
+        result = client.next_appointment(session=session(), patient_identity=patient_identity())
+
+        self.assertEqual(result["status"], "not_found")
+        self.assertIsNone(result["data"]["appointment"])
+
+    def test_not_found_education_material_is_normal_result(self) -> None:
+        transport = FakeTransport(
+            [
+                response(
+                    404,
+                    {
+                        "status": "not_found",
+                        "data": {"material": None},
+                        "review_required": False,
+                        "audit_ref": "audit_demo",
+                    },
+                )
+            ]
+        )
+        client = RenaliaApiClient(config(), transport=transport, clock=lambda: 1791065400)
+
+        result = client.education_material(
+            session=session(),
+            patient_identity=patient_identity(),
+            topic="no-template",
+            language="es-CO",
+        )
+
+        self.assertEqual(result["status"], "not_found")
+        self.assertIsNone(result["data"]["material"])
 
     def test_deterministic_400_error_is_not_retried_and_payload_is_redacted(self) -> None:
         transport = FakeTransport(
