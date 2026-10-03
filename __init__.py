@@ -1,0 +1,2 @@
+"""Channel and product adapters."""
+

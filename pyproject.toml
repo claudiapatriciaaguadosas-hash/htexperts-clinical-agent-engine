@@ -1,0 +1,21 @@
+[project]
+name = "htexperts-clinical-agent-engine"
+version = "0.1.0"
+description = "Laboratory implementation for HTExperts Clinical Agent Engine delivery 1."
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi>=0.115",
+  "pydantic>=2.9",
+  "uvicorn[standard]>=0.30",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.3",
+  "httpx>=0.27",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+
