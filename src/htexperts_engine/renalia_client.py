@@ -4,6 +4,7 @@ import base64
 import hashlib
 import hmac
 import json
+import os
 import time
 import uuid
 import urllib.error
@@ -61,6 +62,37 @@ class RenaliaClientConfig:
     max_attempts: int = 3
     allowed_channel_modes: frozenset[str] = frozenset({"whatsapp", "admin_test"})
 
+    @classmethod
+    def from_environment(cls, *, require_secret: bool = True) -> "RenaliaClientConfig":
+        signing_secret = os.environ.get("RENALIA_SIGNING_SECRET", "")
+        if require_secret and not signing_secret:
+            raise RenaliaClientError(
+                "missing_secret",
+                "RENALIA_SIGNING_SECRET is not configured in the current process.",
+                retryable=False,
+            )
+
+        timeout_raw = os.environ.get("RENALIA_REQUEST_TIMEOUT_SECONDS", "10")
+        max_attempts_raw = os.environ.get("RENALIA_MAX_ATTEMPTS", "3")
+        try:
+            timeout_seconds = float(timeout_raw)
+            max_attempts = int(max_attempts_raw)
+        except ValueError as exc:
+            raise RenaliaClientError(
+                "invalid_environment",
+                "RENALIA timeout and max attempts must be numeric.",
+                retryable=False,
+            ) from exc
+
+        return cls(
+            api_base_url=_required_env("RENALIA_API_BASE_URL"),
+            installation_id=_required_env("RENALIA_INSTALLATION_ID"),
+            credential_id=_required_env("RENALIA_CREDENTIAL_ID"),
+            signing_secret=signing_secret,
+            timeout_seconds=timeout_seconds,
+            max_attempts=max_attempts,
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class RenaliaHttpResponse:
@@ -79,6 +111,17 @@ class RenaliaTransport(Protocol):
         timeout_seconds: float,
     ) -> RenaliaHttpResponse:
         ...
+
+
+def _required_env(name: str) -> str:
+    value = os.environ.get(name, "")
+    if not value:
+        raise RenaliaClientError(
+            "invalid_environment",
+            f"{name} is required for RENALIA client configuration.",
+            retryable=False,
+        )
+    return value
 
 
 def default_urllib_transport(

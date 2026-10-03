@@ -4,16 +4,18 @@ Este plan prepara la prueba del conector HTExperts contra RENALIA publicada. No 
 
 ## Estado actual
 
-No hay instalacion demo activa ni credencial vigente. Las credenciales demo reportadas por Lovable estan revocadas y las instalaciones demo inactivas. Este plan queda listo para ejecutar solo cuando Lovable cree una nueva instalacion demo y entregue el secreto por un canal seguro fuera del chat y fuera de GitHub.
+Lovable preparo una instalacion demo activa para prueba externa. Los valores no secretos estan en `.env`, que esta ignorado por Git. El secreto HMAC no esta en el repositorio: debe guardarse localmente con `scripts/set-renalia-secret.ps1`, que usa Windows DPAPI para el usuario actual.
+
+No ejecutar peticiones firmadas hasta que el secreto este configurado por canal seguro fuera del chat y fuera de GitHub.
 
 ## Prerrequisitos
 
-- `RENALIA_API_BASE_URL` del dominio publicado o entorno de prueba.
-- `RENALIA_INSTALLATION_ID` de clinica demo.
-- `RENALIA_CREDENTIAL_ID` de credencial demo activa.
+- `RENALIA_API_BASE_URL=https://project--1523cd03-5b53-4774-9f2f-41ed4688f22e.lovable.app`.
+- `RENALIA_INSTALLATION_ID=inst_hte_prueba`.
+- `RENALIA_CREDENTIAL_ID=cred_hte_prueba_v1`.
 - `RENALIA_SIGNING_SECRET` recibido por canal seguro, nunca por chat ni GitHub.
-- Datos ficticios para `identity/resolve-contact`.
-- Confirmacion de que `whatsapp_route_mode` no activara dos procesadores para el mismo numero.
+- Datos ficticios para `identity/resolve-contact`: telefono `+15550000999`, documento sufijo `0001`, nacimiento `1970-06-15`.
+- Confirmacion recibida: `whatsapp_route_mode=external_engine`, Meta no configurado, voz bloqueada y ninguna ruta envia mensajes reales.
 
 ## Comprobaciones
 
@@ -35,11 +37,33 @@ No hay instalacion demo activa ni credencial vigente. Las credenciales demo repo
 
 ## Criterios de no avance
 
-- Falta de URL o credenciales demo.
+- Falta de `RENALIA_SIGNING_SECRET` en el almacen local protegido.
 - Instalacion no marcada como demo.
 - Riesgo de enviar WhatsApp/voz real.
 - Falta de datos ficticios autorizados.
 - Inconsistencia entre esquemas documentados y respuestas reales.
+
+## Preparacion local
+
+Configurar valores no secretos:
+
+```powershell
+scripts\check-renalia-demo-config.ps1
+```
+
+Cuando el secreto llegue por canal seguro, guardarlo sin imprimirlo:
+
+```powershell
+scripts\set-renalia-secret.ps1
+```
+
+Para una sesion de prueba posterior, cargar configuracion y secreto en el proceso:
+
+```powershell
+. .\scripts\load-renalia-demo-env.ps1
+```
+
+Estos scripts no ejecutan peticiones firmadas.
 
 ## Evidencia a conservar
 

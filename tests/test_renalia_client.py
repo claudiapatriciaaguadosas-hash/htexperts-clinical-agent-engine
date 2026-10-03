@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 import unittest
 from pathlib import Path
@@ -422,6 +423,64 @@ class RenaliaClientTests(unittest.TestCase):
 
         self.assertEqual(redacted["patient_identity"]["identity_proof"], "<redacted>")
         self.assertEqual(redacted["verification_evidence"], "<redacted>")
+
+    def test_config_from_environment_requires_secret_by_default(self) -> None:
+        keys = [
+            "RENALIA_API_BASE_URL",
+            "RENALIA_INSTALLATION_ID",
+            "RENALIA_CREDENTIAL_ID",
+            "RENALIA_SIGNING_SECRET",
+        ]
+        old = {key: os.environ.get(key) for key in keys}
+        try:
+            os.environ["RENALIA_API_BASE_URL"] = "https://renalia.example.test"
+            os.environ["RENALIA_INSTALLATION_ID"] = "inst_demo"
+            os.environ["RENALIA_CREDENTIAL_ID"] = "cred_demo"
+            os.environ.pop("RENALIA_SIGNING_SECRET", None)
+
+            with self.assertRaises(RenaliaClientError) as raised:
+                RenaliaClientConfig.from_environment()
+
+            self.assertEqual(raised.exception.code, "missing_secret")
+        finally:
+            for key, value in old.items():
+                if value is None:
+                    os.environ.pop(key, None)
+                else:
+                    os.environ[key] = value
+
+    def test_config_from_environment_can_load_non_secret_values_for_readiness_checks(self) -> None:
+        keys = [
+            "RENALIA_API_BASE_URL",
+            "RENALIA_INSTALLATION_ID",
+            "RENALIA_CREDENTIAL_ID",
+            "RENALIA_SIGNING_SECRET",
+            "RENALIA_REQUEST_TIMEOUT_SECONDS",
+            "RENALIA_MAX_ATTEMPTS",
+        ]
+        old = {key: os.environ.get(key) for key in keys}
+        try:
+            os.environ["RENALIA_API_BASE_URL"] = "https://renalia.example.test"
+            os.environ["RENALIA_INSTALLATION_ID"] = "inst_demo"
+            os.environ["RENALIA_CREDENTIAL_ID"] = "cred_demo"
+            os.environ.pop("RENALIA_SIGNING_SECRET", None)
+            os.environ["RENALIA_REQUEST_TIMEOUT_SECONDS"] = "7"
+            os.environ["RENALIA_MAX_ATTEMPTS"] = "2"
+
+            loaded = RenaliaClientConfig.from_environment(require_secret=False)
+
+            self.assertEqual(loaded.api_base_url, "https://renalia.example.test")
+            self.assertEqual(loaded.installation_id, "inst_demo")
+            self.assertEqual(loaded.credential_id, "cred_demo")
+            self.assertEqual(loaded.signing_secret, "")
+            self.assertEqual(loaded.timeout_seconds, 7)
+            self.assertEqual(loaded.max_attempts, 2)
+        finally:
+            for key, value in old.items():
+                if value is None:
+                    os.environ.pop(key, None)
+                else:
+                    os.environ[key] = value
 
 
 if __name__ == "__main__":

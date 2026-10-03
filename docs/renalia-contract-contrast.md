@@ -21,10 +21,26 @@ No se detectan contradicciones nuevas frente al contrato implementado anterior. 
 - `retell_voice` permanece bloqueado por falta de consentimiento de voz/grabacion.
 - Handoffs no tienen acuse humano: `acknowledgement_tracked:false` y `acknowledged_at:null`.
 
+## Preparacion demo recibida
+
+El documento `RENALIA_preparacion_prueba_HTExperts.md` confirma:
+
+- dominio publicado recomendado: `https://project--1523cd03-5b53-4774-9f2f-41ed4688f22e.lovable.app`;
+- instalacion activa `inst_hte_prueba`;
+- credencial activa `cred_hte_prueba_v1`;
+- `is_demo=true`;
+- `whatsapp_route_mode=external_engine`;
+- permisos para las 12 rutas;
+- paciente ficticio con telefono `+15550000999`, documento sufijo `0001` y nacimiento `1970-06-15`;
+- consentimientos `data_processing`, `whatsapp_messaging` y `telemonitoring`;
+- cita futura, pendiente visible, plantilla educativa y outreach demo ficticios;
+- Meta no configurado, Retell bloqueado, sin mensajes ni llamadas reales.
+
+No hay contradiccion con el conector local. El secreto sigue fuera del chat y del repositorio.
+
 ## Pendientes funcionales
 
-- No hay instalacion demo activa ni credencial vigente para prueba externa.
-- No hay mecanismo acordado en este repositorio para recibir `RENALIA_SIGNING_SECRET`; debe configurarse fuera del chat y fuera de GitHub.
+- Falta recibir `RENALIA_SIGNING_SECRET` por canal seguro y guardarlo localmente con DPAPI.
 - No hay fecha para consentimiento de voz/grabacion.
 - No hay pantalla/campo de acuse humano ni SLA de responsable de handoffs.
 - El escalamiento sin identidad verificada sigue pendiente de decision funcional: RENALIA permite ciertos registros administrativos, pero no debe divulgar informacion clinica ni crear pacientes.
